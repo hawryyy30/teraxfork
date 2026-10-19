@@ -1,0 +1,57 @@
+name: Build Windows
+
+# Windows-only Terax build for the fork. Run on demand from the Actions tab.
+# Produces an unsigned NSIS .exe + .msi as run artifacts (SmartScreen will
+# warn on install — expected without a signing certificate).
+#
+# The updater is disabled for fork builds: upstream's config points at
+# crynta/terax-ai releases and we have no signing key here.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Disable updater for fork build
+        shell: pwsh
+        run: |
+          $conf = "src-tauri/tauri.conf.json"
+          $json = Get-Content $conf -Raw | ConvertFrom-Json
+          $json.plugins.updater.active = $false
+          $json | ConvertTo-Json -Depth 32 | Set-Content $conf -NoNewline
+
+      - name: Build frontend
+        run: pnpm build
+
+      - name: Build Windows bundles
+        run: pnpm exec tauri build --bundles nsis,msi
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v7
+        with:
+          name: terax-windows-installers
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
