@@ -1,16 +1,17 @@
 /**
- * Terax on GPUIX — migration seed (milestone M1).
+ * Terax on GPUIX — migration seed (milestones M1 + M4).
  *
  * The start of the real migration: Terax's Tauri/React frontend rebuilt on
  * native GPUIX rendering. M1 covers the shell + the terminal surface:
  *
- * - Icon rail, tab bar, AI chat panel (mock), status bar — all GPUIX native.
+ * - Icon rail, tab bar, status bar — all GPUIX native.
  * - Real terminal: ghostty-vt.wasm → block rasterizer → <img> setImagePixels,
  *   with a real PTY (node-pty) and full keyboard input.
  * - File explorer wired to the shell's working directory.
  *
- * M2 adds the code editor (needs the GPUIX fork's selection/onSelect APIs).
- * M3 adds LSP; M4 wires the AI chat to real models.
+ * M4 (this change): AI chat with real model calls (Vercel AI SDK in Bun,
+ * BYOK, streaming). M2 adds the code editor (needs the GPUIX fork's
+ * selection/onSelect APIs); M3 adds LSP.
  *
  * Run:   bun run dev        (needs a real GPU; no software fallback)
  * Check: bun run typecheck
@@ -20,52 +21,9 @@ import { useState } from 'react'
 import { render } from '@gpuix/react'
 import { TerminalPane } from './TerminalPane.tsx'
 import { FileExplorerPane } from './FileExplorerPane.tsx'
-import { dispatchWindowKeyDown, setTextUiFocused, writeToTerminal } from './terminal-input-bus.ts'
-
-// ── Design tokens ──────────────────────────────────────────────────────────
-// GPUI does not inherit `color`: every <text> sets one explicitly.
-
-const C = {
-  bg: '#141417',
-  rail: '#1B1B1E',
-  pane: '#1E1E22',
-  raised: '#26262B',
-  border: '#2E2E34',
-  text: '#E4E4E7',
-  secondary: '#A1A1AA',
-  tertiary: '#71717A',
-  accent: '#7C6CF0',
-  green: '#4ADE80',
-  blue: '#60A5FA',
-  amber: '#FBBF24',
-}
-
-const UI_FONT = 'Inter'
-
-// ── Mock data (chat goes real in M4) ────────────────────────────────────────
-
-type Msg = { role: 'user' | 'assistant'; body: string }
-
-const SEED: Msg[] = [
-  {
-    role: 'user',
-    body: 'Why is `git status` slow in this repo?',
-  },
-  {
-    role: 'assistant',
-    body: `Likely culprits, in order:
-
-1. **Untracked directory scans** — \`node_modules\` or build output not ignored
-2. **FS watcher backlog** — check \`fs.inotify.max_user_watches\`
-3. **Status config** — try \`git status --porcelain=v2\` to time the plumbing
-
-\`\`\`sh
-time git status --porcelain=v2 | wc -l
-\`\`\`
-
-If that is fast but the UI is slow, the bottleneck is on our side, not git's.`,
-  },
-]
+import { ChatPane } from './ai/ChatPane.tsx'
+import { dispatchWindowKeyDown, writeToTerminal } from './terminal-input-bus.ts'
+import { C } from './ui-tokens.ts'
 
 // ── Small components ───────────────────────────────────────────────────────
 
@@ -110,34 +68,7 @@ function RailPlaceholder({ label }: { label: string }) {
   )
 }
 
-function ChatMessage({ msg }: { msg: Msg }) {
-  const isUser = msg.role === 'user'
-  return (
-    <div style={{ paddingLeft: 12, paddingRight: 12, paddingTop: 8, paddingBottom: 8 }}>
-      <text
-        style={{
-          fontSize: 11,
-          fontWeight: 'bold',
-          color: isUser ? C.blue : C.accent,
-          marginBottom: 4,
-        }}
-      >
-        {isUser ? 'you' : 'terax'}
-      </text>
-      {isUser ? (
-        <text style={{ fontSize: 13, color: C.text, lineHeight: 20 }}>{msg.body}</text>
-      ) : (
-        <markdown source={msg.body} />
-      )}
-    </div>
-  )
-}
-
-// ── The app ────────────────────────────────────────────────────────────────
-
 function TeraxApp() {
-  const [messages, setMessages] = useState<Msg[]>(SEED)
-  const [draft, setDraft] = useState('')
   const [rail, setRail] = useState('terminal')
   // Working directory, shared by the explorer and the terminal shell.
   const [cwd, setCwd] = useState(() => process.cwd())
@@ -155,20 +86,6 @@ function TeraxApp() {
 
   const openInEditor = (path: string) => {
     setNotice(`Editor lands in M2 — would open ${path}`)
-  }
-
-  const send = (text: string) => {
-    const t = text.trim()
-    if (!t) return
-    setDraft('')
-    setMessages((m) => [
-      ...m,
-      { role: 'user', body: t },
-      {
-        role: 'assistant',
-        body: `Real model calls land in M4 — echoing for now.\n\nYou asked: \`${t.slice(0, 80)}\``,
-      },
-    ])
   }
 
   return (
@@ -238,65 +155,8 @@ function TeraxApp() {
             )}
           </div>
 
-          {/* AI chat panel (mock until M4) */}
-          <div
-            style={{
-              flexGrow: 2,
-              display: 'flex',
-              flexDirection: 'column',
-              backgroundColor: C.pane,
-              minWidth: 0,
-            }}
-          >
-            <div style={{ padding: 12, borderBottomWidth: 1, borderColor: C.border }}>
-              <text style={{ fontSize: 13, fontWeight: 'bold', color: C.text }}>✦ Ask</text>
-              <text style={{ fontSize: 11, color: C.tertiary, marginTop: 2 }}>
-                BYOK · no telemetry · local models supported
-              </text>
-            </div>
-            <virtual-list overdraw={240} estimatedItemHeight={120} style={{ flexGrow: 1, minHeight: 0, width: '100%' }}>
-              {messages.map((m, i) => (
-                <ChatMessage key={i} msg={m} />
-              ))}
-            </virtual-list>
-            <div
-              style={{
-                borderTopWidth: 1,
-                borderColor: C.border,
-                padding: 8,
-                backgroundColor: C.rail,
-              }}
-            >
-              <textarea
-                testId="composer"
-                value={draft}
-                placeholder="Ask about this repo…"
-                minRows={1}
-                maxRows={4}
-                autoFocus
-                onFocus={() => setTextUiFocused(true)}
-                onBlur={() => setTextUiFocused(false)}
-                style={{
-                  width: '100%',
-                  minWidth: 0,
-                  fontSize: 13,
-                  lineHeight: 19,
-                  fontFamily: UI_FONT,
-                  color: C.text,
-                  backgroundColor: C.raised,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: C.border,
-                  paddingLeft: 10,
-                  paddingRight: 10,
-                  paddingTop: 8,
-                  paddingBottom: 8,
-                }}
-                onChange={(e) => setDraft(e.value ?? '')}
-                onSubmit={(e) => send(e.value ?? draft)}
-              />
-            </div>
-          </div>
+          {/* AI chat panel — real model calls (M4) */}
+          <ChatPane />
         </div>
 
         {/* Status bar */}
@@ -315,7 +175,7 @@ function TeraxApp() {
           }}
         >
           <text style={{ fontSize: 11, color: C.secondary }}>⑂ gpuix/main</text>
-          <text style={{ fontSize: 11, color: C.tertiary }}>{notice || 'migration M1'}</text>
+          <text style={{ fontSize: 11, color: C.tertiary }}>{notice || 'migration M4 (M2 blocked: no Windows GPUIX-Fork binary)'}</text>
           <div style={{ flexGrow: 1 }} />
           <text style={{ fontSize: 11, color: C.tertiary }}>GPUIX 0.10.0 · native</text>
         </div>
