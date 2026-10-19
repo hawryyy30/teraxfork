@@ -38,13 +38,16 @@ jobs:
         run: |
           $conf = "src-tauri/tauri.conf.json"
           $json = Get-Content $conf -Raw | ConvertFrom-Json
-          # Keep the updater section present but dormant and keyless: the
-          # bundler errors if the section is missing entirely, while a
-          # present pubkey without a private key fails the signing step.
-          # The fork shouldn't auto-update from upstream releases anyway.
-          $json.plugins.updater = [pscustomobject]@{ active = $false }
-          # Belt and suspenders: never emit updater artifacts in fork builds.
+          # Keep the updater section intact but dormant: both the bundler and
+          # the updater plugin require the section (incl. the pubkey field),
+          # so only flip it off. The fork has no signing key and shouldn't
+          # auto-update from upstream releases anyway.
+          $json.plugins.updater | Add-Member -NotePropertyName 'active' -NotePropertyValue $false -Force
+          # Never emit updater artifacts in fork builds (they'd need signing).
           $json.bundle | Add-Member -NotePropertyName 'createUpdaterArtifacts' -NotePropertyValue $false -Force
+          # Embed the WebView2 bootstrapper so the runtime is installed even
+          # if the download step is skipped or fails silently.
+          $json.bundle.windows.webviewInstallMode.type = 'embedBootstrapper'
           $json | ConvertTo-Json -Depth 32 | Set-Content $conf -NoNewline
 
       - name: Build frontend
