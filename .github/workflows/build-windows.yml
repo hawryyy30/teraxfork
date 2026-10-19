@@ -38,7 +38,8 @@ jobs:
         run: |
           $conf = "src-tauri/tauri.conf.json"
           $json = Get-Content $conf -Raw | ConvertFrom-Json
-          $json.plugins.updater.active = $false
+          # 'active' defaults to true and is usually absent: add it.
+          $json.plugins.updater | Add-Member -NotePropertyName 'active' -NotePropertyValue $false -Force
           $json | ConvertTo-Json -Depth 32 | Set-Content $conf -NoNewline
 
       - name: Build frontend
