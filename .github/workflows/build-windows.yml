@@ -38,8 +38,10 @@ jobs:
         run: |
           $conf = "src-tauri/tauri.conf.json"
           $json = Get-Content $conf -Raw | ConvertFrom-Json
-          # 'active' defaults to true and is usually absent: add it.
-          $json.plugins.updater | Add-Member -NotePropertyName 'active' -NotePropertyValue $false -Force
+          # Remove the updater section entirely: with no pubkey there is
+          # nothing to sign (active:false alone does not stop the check),
+          # and the fork shouldn't auto-update from upstream releases anyway.
+          $json.plugins.PSObject.Properties.Remove('updater')
           $json | ConvertTo-Json -Depth 32 | Set-Content $conf -NoNewline
 
       - name: Build frontend
