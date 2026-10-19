@@ -9,19 +9,24 @@
  *   with a real PTY (node-pty) and full keyboard input.
  * - File explorer wired to the shell's working directory.
  *
- * M4 (this change): AI chat with real model calls (Vercel AI SDK in Bun,
- * BYOK, streaming). M2 adds the code editor (needs the GPUIX fork's
- * selection/onSelect APIs); M3 adds LSP.
+ * M4 (done): AI chat with real model calls (Vercel AI SDK in Bun,
+ * BYOK, streaming). M3 (done): LSP in Bun (dumb-pipe session on the spike's
+ * lsp-framing/session/manager/presets + diagnostics problems panel +
+ * completion/hover UI). M2 adds the code editor (needs the GPUIX fork's
+ * selection/onSelect APIs); M5 adds git, settings, command palette.
  *
  * Run:   bun run dev        (needs a real GPU; no software fallback)
  * Check: bun run typecheck
  */
 
 import { useState } from 'react'
+import { readFile } from 'node:fs/promises'
 import { render } from '@gpuix/react'
 import { TerminalPane } from './TerminalPane.tsx'
 import { FileExplorerPane } from './FileExplorerPane.tsx'
 import { ChatPane } from './ai/ChatPane.tsx'
+import { analyzePath, useLspForPath } from './lsp/useLsp.ts'
+import { ProblemsPanel } from './lsp/ProblemsPanel.tsx'
 import { dispatchWindowKeyDown, writeToTerminal } from './terminal-input-bus.ts'
 import { C } from './ui-tokens.ts'
 
@@ -74,6 +79,10 @@ function TeraxApp() {
   const [cwd, setCwd] = useState(() => process.cwd())
   // Transient notice shown in the status bar (e.g. "editor lands in M2").
   const [notice, setNotice] = useState('')
+  // File under read-only LSP analysis (set by explorer file-open); the M2
+  // editor pane takes over doc ownership once it exists.
+  const [analysisPath, setAnalysisPath] = useState<string | null>(null)
+  const { diags: lspDiags, state: lspState } = useLspForPath(analysisPath)
 
   /** Explorer navigation: move the explorer AND `cd` the shell, so the
    *  working directory follows clicks like a normal file explorer. */
@@ -85,7 +94,19 @@ function TeraxApp() {
   }
 
   const openInEditor = (path: string) => {
-    setNotice(`Editor lands in M2 — would open ${path}`)
+    // No editor pane yet (M2): hand the file to LSP for read-only analysis
+    // so the problems panel shows real diagnostics in the meantime.
+    const base = path.split('/').pop() ?? path
+    setNotice(`Editor lands in M2 — analyzing ${base} with LSP`)
+    setAnalysisPath(path)
+    void (async () => {
+      try {
+        const text = await readFile(path, 'utf8')
+        await analyzePath(path, text)
+      } catch (err) {
+        setNotice(`LSP analysis failed for ${base}: ${(err as Error).message}`)
+      }
+    })()
   }
 
   return (
@@ -108,6 +129,7 @@ function TeraxApp() {
         <RailButton glyph="▤" label="files" active={rail === 'files'} onPress={() => setRail('files')} />
         <RailButton glyph="⑂" label="git" active={rail === 'git'} onPress={() => setRail('git')} />
         <RailButton glyph="✦" label="ai" active={rail === 'ai'} onPress={() => setRail('ai')} />
+        <RailButton glyph="⚠" label="problems" active={rail === 'problems'} onPress={() => setRail('problems')} />
         <div style={{ flexGrow: 1 }} />
         <RailButton glyph="⚙" label="setup" active={rail === 'setup'} onPress={() => setRail('setup')} />
       </div>
@@ -150,6 +172,14 @@ function TeraxApp() {
               <TerminalPane />
             ) : rail === 'files' ? (
               <FileExplorerPane cwd={cwd} onNavigate={navigateDir} onOpenFile={openInEditor} />
+            ) : rail === 'problems' ? (
+              <ProblemsPanel
+                diags={lspDiags}
+                path={analysisPath}
+                onJumpLine={(d) =>
+                  setNotice(`Editor lands in M2 — problem at Ln ${d.range.start.line + 1}`)
+                }
+              />
             ) : (
               <RailPlaceholder label={rail} />
             )}
@@ -175,7 +205,19 @@ function TeraxApp() {
           }}
         >
           <text style={{ fontSize: 11, color: C.secondary }}>⑂ gpuix/main</text>
-          <text style={{ fontSize: 11, color: C.tertiary }}>{notice || 'migration M4 (M2 blocked: no Windows GPUIX-Fork binary)'}</text>
+          {analysisPath ? (
+            <text
+              style={{
+                fontSize: 11,
+                color:
+                  lspState === 'running' ? C.green : lspState === 'off' ? C.tertiary : C.amber,
+              }}
+            >
+              LSP {lspState}
+              {lspDiags.length > 0 ? ` · ${lspDiags.length}` : ''}
+            </text>
+          ) : null}
+          <text style={{ fontSize: 11, color: C.tertiary }}>{notice || 'migration M3+M4 (M2 blocked: no Windows GPUIX-Fork binary)'}</text>
           <div style={{ flexGrow: 1 }} />
           <text style={{ fontSize: 11, color: C.tertiary }}>GPUIX 0.10.0 · native</text>
         </div>

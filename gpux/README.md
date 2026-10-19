@@ -17,9 +17,15 @@ frontend rebuilt on native GPU rendering via GPUIX (`@gpuix/react`).
 - **M2 (blocked on user):** code editor — needs the GPUIX fork's
   `selection`/`onSelect` APIs and a Windows `.node` binary; the fork
   (`hawryyy30/GPUIX-Fork`) was never pushed and this VM has no credentials.
-- **M3 (next):** LSP in Bun (port spike's lsp-framing/session/manager/presets) +
-  diagnostics, completion, hover.
-- **M5:** git panel, settings/themes, command palette.
+- **M3 (done):** LSP in Bun — port of the spike's `lsp-framing` /
+  `lsp-session` / `lsp-manager` / `lsp-presets` (dumb JSON-RPC pipe,
+  per-root sessions, refcounts, idle shutdown, crash backoff, session cap)
+  + diagnostics Problems panel (status-bar pill + `⚠` rail view; fed by
+  read-only analysis of the file opened via the explorer until M2's editor
+  owns doc sync) + completion and hover UI components (their editor wiring
+  lands with M2). Verified headless: `bun run test` (69 tests) and
+  `bun run test:lsp:e2e` against a real `typescript-language-server`.
+- **M5 (next):** git panel, settings/themes, command palette.
 
 Dropped vs stock Terax: the web preview pane (GPUIX has no webview).
 
@@ -31,7 +37,7 @@ bun install
 bun run dev
 ```
 
-Typecheck: `bun run typecheck`. Tests: `bun run test`.
+Typecheck: `bun run typecheck`. Tests: `bun run test`. LSP e2e: `bun run test:lsp:e2e`.
 
 ## Layout
 
@@ -40,6 +46,10 @@ Typecheck: `bun run typecheck`. Tests: `bun run test`.
 - `TerminalPane.tsx`, `terminal-*.ts`, `pty-source.ts`, `ghostty-headless.ts` —
   the terminal stack (ported from the spike, `~/workspace/terax-gpuix/spike/`)
 - `FileExplorerPane.tsx` — file explorer
+- `lsp/` — LSP in Bun: `lsp-framing.ts`, `lsp-session.ts`, `lsp-manager.ts`,
+  `lsp-presets.ts` (ported from the spike), `editor-assists.ts`,
+  `useLsp.ts` (shared manager + analysis hook), `ProblemsPanel.tsx`,
+  `AssistPanels.tsx` (completion + hover UI), `lsp-e2e.ts` (headless e2e)
 - `vendor/ghostty-core/` — vendored ghostty-core WASM + TS bridge (portable)
 
 ## Notes
