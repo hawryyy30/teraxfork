@@ -15,8 +15,14 @@ frontend rebuilt on native GPU rendering via GPUIX (`@gpuix/react`).
   (memory only, never logged or persisted). Real calls need a key and a
   GPU machine; the key-resolution and error paths are unit-tested.
 - **M2 (blocked on user):** code editor — needs the GPUIX fork's
-  `selection`/`onSelect` APIs and a Windows `.node` binary; the fork
-  (`hawryyy30/GPUIX-Fork`) was never pushed and this VM has no credentials.
+  `selection`/`onSelect` APIs and a downloadable Windows `.node` binary.
+  The fork IS pushed (`hawryyy30/GPUIX-Fork`, commits `8890ad4` +
+  `87d2fae`), but CI re-run `39267538571` is red: Windows x86_64 build
+  went green, Windows ARM64 build failed → test job skipped, publish
+  skipped → no downloadable Windows `.node` artifact yet. Unblock =
+  user gets CI green + a downloadable Windows x64 `.node` binary (the
+  spike's `CodeEditorPane.tsx` is already wired to the fork's APIs via
+  the `fork-pkgs` staging — the port source for M2).
 - **M5 (done):** git panel (`git/` — status, stage/unstage, discard
   (two-step), commit, per-file diff, pull/push, recent log; subprocess
   `git`, argv only, never a shell) + settings with live theme switching
@@ -34,8 +40,10 @@ frontend rebuilt on native GPU rendering via GPUIX (`@gpuix/react`).
   lands with M2). Verified headless: `bun run test` (69 tests) and
   `bun run test:lsp:e2e` against a real `typescript-language-server`.
 - **M5 (next):** all milestones except M2 are done. Remaining: M2 code
-  editor (blocked on user: needs the GPUIX fork's `selection`/`onSelect`
-  APIs and a Windows `.node` binary), plus Windows GPU render validation.
+  editor (blocked on user: CI re-run `39267538571` on `GPUIX-Fork` is red —
+  Windows ARM64 build failed, so no downloadable Windows `.node` binary;
+  port the spike's `CodeEditorPane` once the user has a green CI + binary),
+  plus Windows GPU render validation.
 
 Dropped vs stock Terax: the web preview pane (GPUIX has no webview).
 
