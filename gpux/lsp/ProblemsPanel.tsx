@@ -9,7 +9,7 @@
  */
 import { useMemo } from 'react'
 import type { LspDiagnostic } from './lsp-manager'
-import { C } from '../ui-tokens.ts'
+import { C, useThemeVersion } from '../ui-tokens.ts'
 
 function severityColor(sev: number | undefined): string {
   return sev === 1 ? C.red : sev === 2 ? C.amber : C.secondary
@@ -24,6 +24,7 @@ export function ProblemsPanel({
   path: string | null
   onJumpLine?: (d: LspDiagnostic) => void
 }) {
+  useThemeVersion()
   const sorted = useMemo(
     () =>
       [...diags].sort(

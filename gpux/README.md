@@ -17,6 +17,14 @@ frontend rebuilt on native GPU rendering via GPUIX (`@gpuix/react`).
 - **M2 (blocked on user):** code editor — needs the GPUIX fork's
   `selection`/`onSelect` APIs and a Windows `.node` binary; the fork
   (`hawryyy30/GPUIX-Fork`) was never pushed and this VM has no credentials.
+- **M5 (done):** git panel (`git/` — status, stage/unstage, discard
+  (two-step), commit, per-file diff, pull/push, recent log; subprocess
+  `git`, argv only, never a shell) + settings with live theme switching
+  (6 themes: Terax Dark/Light, Kanagawa, Dracula, Tokyo Night, Catppuccin
+  Mocha; persisted to `~/.config/terax-gpux/settings.json`, API keys never
+  stored) + command palette (Ctrl/Cmd+Shift+P or the tab-bar button;
+  fuzzy-matched commands for navigation, git actions, theme cycling).
+  Verified headless: `bun run test` (93 tests) and `bun run typecheck`.
 - **M3 (done):** LSP in Bun — port of the spike's `lsp-framing` /
   `lsp-session` / `lsp-manager` / `lsp-presets` (dumb JSON-RPC pipe,
   per-root sessions, refcounts, idle shutdown, crash backoff, session cap)
@@ -25,7 +33,9 @@ frontend rebuilt on native GPU rendering via GPUIX (`@gpuix/react`).
   owns doc sync) + completion and hover UI components (their editor wiring
   lands with M2). Verified headless: `bun run test` (69 tests) and
   `bun run test:lsp:e2e` against a real `typescript-language-server`.
-- **M5 (next):** git panel, settings/themes, command palette.
+- **M5 (next):** all milestones except M2 are done. Remaining: M2 code
+  editor (blocked on user: needs the GPUIX fork's `selection`/`onSelect`
+  APIs and a Windows `.node` binary), plus Windows GPU render validation.
 
 Dropped vs stock Terax: the web preview pane (GPUIX has no webview).
 
@@ -50,6 +60,11 @@ Typecheck: `bun run typecheck`. Tests: `bun run test`. LSP e2e: `bun run test:ls
   `lsp-presets.ts` (ported from the spike), `editor-assists.ts`,
   `useLsp.ts` (shared manager + analysis hook), `ProblemsPanel.tsx`,
   `AssistPanels.tsx` (completion + hover UI), `lsp-e2e.ts` (headless e2e)
+- `git/` — git panel backend + UI (M5): `git.ts` (subprocess wrapper,
+  porcelain-v2/log parsers), `git-bus.ts` (refresh pub/sub), `GitPane.tsx`
+- `settings/` — `themes.ts` (theme registry), `store.ts` (prefs
+  persistence), `SettingsPane.tsx` (M5)
+- `palette/` — `fuzzy.ts` (fuzzy matcher), `CommandPalette.tsx` (M5)
 - `vendor/ghostty-core/` — vendored ghostty-core WASM + TS bridge (portable)
 
 ## Notes

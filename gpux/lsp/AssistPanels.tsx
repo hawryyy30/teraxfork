@@ -10,7 +10,7 @@
  * on caret idle (900 ms in the spike) and renders with native <markdown>.
  */
 import type { LspCompletionItem } from './lsp-manager'
-import { C } from '../ui-tokens.ts'
+import { C, useThemeVersion } from '../ui-tokens.ts'
 
 export function CompletionPanel({
   items,
@@ -21,6 +21,7 @@ export function CompletionPanel({
   onPick: (item: LspCompletionItem) => void
   onDismiss: () => void
 }) {
+  useThemeVersion()
   if (items.length === 0) return null
   return (
     <div
@@ -69,6 +70,7 @@ export function CompletionPanel({
 }
 
 export function HoverPanel({ text, onDismiss }: { text: string; onDismiss: () => void }) {
+  useThemeVersion()
   if (!text) return null
   return (
     <div

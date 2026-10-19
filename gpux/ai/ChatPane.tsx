@@ -7,7 +7,7 @@
  */
 
 import { useRef, useState } from 'react'
-import { C, UI_FONT } from '../ui-tokens.ts'
+import { C, UI_FONT, useThemeVersion } from '../ui-tokens.ts'
 import { setTextUiFocused } from '../terminal-input-bus.ts'
 import {
   MissingApiKeyError,
@@ -28,6 +28,7 @@ const WELCOME: UiMessage = {
 }
 
 function ChatMessage({ msg }: { msg: UiMessage }) {
+  useThemeVersion()
   const isUser = msg.role === 'user'
   return (
     <div style={{ paddingLeft: 12, paddingRight: 12, paddingTop: 8, paddingBottom: 8 }}>
@@ -57,6 +58,7 @@ function SetupRow({
   label: string
   children: React.ReactNode
 }) {
+  useThemeVersion()
   return (
     <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
       <text style={{ fontSize: 11, color: C.tertiary, width: 64 }}>{label}</text>
@@ -82,6 +84,7 @@ const fieldStyle = {
 } as const
 
 export function ChatPane() {
+  useThemeVersion()
   const [messages, setMessages] = useState<UiMessage[]>([WELCOME])
   const [draft, setDraft] = useState('')
   const [showSetup, setShowSetup] = useState(false)

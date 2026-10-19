@@ -10,17 +10,7 @@ import { useEffect, useState } from 'react'
 import { readdir } from 'node:fs/promises'
 import { dirname, join, parse } from 'node:path'
 
-const C = {
-  pane: '#1E1E22',
-  rail: '#1B1B1E',
-  raised: '#26262B',
-  border: '#2E2E34',
-  text: '#E4E4E7',
-  secondary: '#A1A1AA',
-  tertiary: '#71717A',
-  accent: '#7C6CF0',
-  red: '#F87171',
-}
+import { C, useThemeVersion } from './ui-tokens.ts'
 
 type Entry = { name: string; isDir: boolean }
 
@@ -47,6 +37,7 @@ export function FileExplorerPane({
   onNavigate: (dir: string) => void
   onOpenFile: (path: string) => void
 }) {
+  useThemeVersion()
   const [entries, setEntries] = useState<Entry[]>([])
   const [error, setError] = useState('')
   const [addr, setAddr] = useState(cwd)
