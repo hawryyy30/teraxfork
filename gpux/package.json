@@ -2,8 +2,8 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.82",
     "@ai-sdk/openai": "^4.0.96",
-    "@gpuix/native": "0.10.0",
-    "@gpuix/react": "0.10.0",
+    "@gpuix/native": "file:../../terax-gpuix/fork-pkgs/native",
+    "@gpuix/react": "file:../../terax-gpuix/fork-pkgs/react",
     "ai": "^7.0.143",
     "node-pty": "^1.1.0",
     "react": "^19.2.4"

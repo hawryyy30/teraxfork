@@ -14,15 +14,23 @@ frontend rebuilt on native GPU rendering via GPUIX (`@gpuix/react`).
   streaming responses, stop button, key from env or pasted in the panel
   (memory only, never logged or persisted). Real calls need a key and a
   GPU machine; the key-resolution and error paths are unit-tested.
-- **M2 (blocked on user):** code editor — needs the GPUIX fork's
-  `selection`/`onSelect` APIs and a downloadable Windows `.node` binary.
-  The fork IS pushed (`hawryyy30/GPUIX-Fork`, commits `8890ad4` +
-  `87d2fae`), but CI re-run `39267538571` is red: Windows x86_64 build
-  went green, Windows ARM64 build failed → test job skipped, publish
-  skipped → no downloadable Windows `.node` artifact yet. Unblock =
-  user gets CI green + a downloadable Windows x64 `.node` binary (the
-  spike's `CodeEditorPane.tsx` is already wired to the fork's APIs via
-  the `fork-pkgs` staging — the port source for M2).
+- **M2 (done, headless):** code editor — `CodeEditorPane.tsx` ported from
+  the spike onto the GPUIX fork's `selection`/`onSelect` APIs: native
+  `<textarea>` editing (IME + undo), file open/save (Bun fs), dirty tracking,
+  language badge, search match counting, find-next/prev, go-to-line, bracket
+  auto-close/skip-over, indent-on-Enter. The pane owns the open file's LSP
+  doc handle (didOpen/didChange through the shared `LspManager`), renders
+  publishDiagnostics in-flow (click jumps to the line), and reports
+  diagnostics up via `onDiagnostics` so the app's problems rail + status-bar
+  pill are fed by one owner. Completion/hover use gpux's `AssistPanels`
+  (in-flow panels; caret-exact anchoring still needs a native caret-rect API).
+  Explorer file-open lands in the editor (new `editor` rail view); the
+  problems rail's jump reuses the open editor without clobbering unsaved
+  edits. Fork blocker cleared: `hawryyy30/GPUIX-Fork` CI run `39267538571`
+  (commit `87d2fae`, the selection-prop fix) is fully green, all 4 native
+  builds + tests + publish success, and the Windows x64 `.node` artifact
+  (`bindings-x86_64-pc-windows-msvc`, 9.8 MB) is published. Verified
+  headless: `bun run test` (93 tests) and `bun run typecheck`.
 - **M5 (done):** git panel (`git/` — status, stage/unstage, discard
   (two-step), commit, per-file diff, pull/push, recent log; subprocess
   `git`, argv only, never a shell) + settings with live theme switching
@@ -35,15 +43,16 @@ frontend rebuilt on native GPU rendering via GPUIX (`@gpuix/react`).
   `lsp-session` / `lsp-manager` / `lsp-presets` (dumb JSON-RPC pipe,
   per-root sessions, refcounts, idle shutdown, crash backoff, session cap)
   + diagnostics Problems panel (status-bar pill + `⚠` rail view; fed by
-  read-only analysis of the file opened via the explorer until M2's editor
-  owns doc sync) + completion and hover UI components (their editor wiring
-  lands with M2). Verified headless: `bun run test` (69 tests) and
+  the M2 editor pane's `onDiagnostics`, which owns the open file's doc
+  handle) + completion and hover UI components (wired to the M2 editor
+  pane via `AssistPanels`). Verified headless: `bun run test` (69 tests) and
   `bun run test:lsp:e2e` against a real `typescript-language-server`.
-- **M5 (next):** all milestones except M2 are done. Remaining: M2 code
-  editor (blocked on user: CI re-run `39267538571` on `GPUIX-Fork` is red —
-  Windows ARM64 build failed, so no downloadable Windows `.node` binary;
-  port the spike's `CodeEditorPane` once the user has a green CI + binary),
-  plus Windows GPU render validation.
+- **Remaining (user-side, Windows):** all milestones are done as far as
+  the headless VM goes. Left: download the fork's Windows x64 `.node`
+  artifact (`bindings-x86_64-pc-windows-msvc` from CI run `39267538571`)
+  into the `fork-pkgs` staging (replacing the staged Linux binary), then on
+  Windows: `bun install`, `bun run dev`, and validate terminal rendering,
+  editor keyboard/LSP, and the fork's `selection`/`onSelect` behavior live.
 
 Dropped vs stock Terax: the web preview pane (GPUIX has no webview).
 
@@ -57,6 +66,23 @@ bun run dev
 
 Typecheck: `bun run typecheck`. Tests: `bun run test`. LSP e2e: `bun run test:lsp:e2e`.
 
+## Fork staging notes
+
+`@gpuix/native` + `@gpuix/react` resolve to the fork snapshot at
+`~/workspace/terax-gpuix/fork-pkgs/` via `file:` deps (the fork isn't on a
+registry yet). The staging's `index.js` loads the fork-built `.node` in its
+own directory first, so the staged Linux binary (with the selection fix)
+wins over any npm platform package. Two quirks to know:
+
+- `node_modules/react` is a symlink to the spike's react copy: the staging
+  pins `react/node_modules/react` at the spike's copy, and a second react
+  copy breaks hooks at runtime, so gpux reuses the same one. `bun install`
+  may replace this symlink with a fresh copy; restore it with
+  `rm -rf node_modules/react && ln -s ../../../terax-gpuix/spike/node_modules/react node_modules/react`.
+- On the user's Windows machine, re-stage `fork-pkgs` the same way the
+  staging README describes and drop the downloaded Windows x64 `.node`
+  (`gpuix-native.win32-x64-msvc.node`) next to the Linux one.
+
 ## Layout
 
 - `app.tsx` — shell + entry point
@@ -64,6 +90,9 @@ Typecheck: `bun run typecheck`. Tests: `bun run test`. LSP e2e: `bun run test:ls
 - `TerminalPane.tsx`, `terminal-*.ts`, `pty-source.ts`, `ghostty-headless.ts` —
   the terminal stack (ported from the spike, `~/workspace/terax-gpuix/spike/`)
 - `FileExplorerPane.tsx` — file explorer
+- `CodeEditorPane.tsx` — M2 code editor (spike port): textarea editing,
+  fork selection/onSelect, open/save, search, go-to, bracket assists,
+  LSP doc ownership + in-flow diagnostics/completion/hover
 - `lsp/` — LSP in Bun: `lsp-framing.ts`, `lsp-session.ts`, `lsp-manager.ts`,
   `lsp-presets.ts` (ported from the spike), `editor-assists.ts`,
   `useLsp.ts` (shared manager + analysis hook), `ProblemsPanel.tsx`,

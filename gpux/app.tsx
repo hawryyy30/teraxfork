@@ -14,20 +14,23 @@
  * lsp-framing/session/manager/presets + diagnostics problems panel +
  * completion/hover UI). M5 (done): git panel (status/stage/commit/diff/
  * pull/push/log), settings with live theme switching (6 themes, persisted),
- * and a command palette (Ctrl/Cmd+Shift+P). M2 adds the code editor (needs
- * the GPUIX fork's selection/onSelect APIs); blocked on the user.
+ * and a command palette (Ctrl/Cmd+Shift+P). M2 (done-headless): code editor
+ * (CodeEditorPane port of the spike: native textarea + fork
+ * selection/onSelect APIs, file open/save, dirty tracking, search, go-to,
+ * bracket assists, LSP doc ownership with diagnostics/completion/hover).
+ * Rendering still needs Windows validation on the GPUIX fork's .node.
  *
  * Run:   bun run dev        (needs a real GPU; no software fallback)
  * Check: bun run typecheck
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { readFile } from 'node:fs/promises'
 import { render } from '@gpuix/react'
 import { TerminalPane } from './TerminalPane.tsx'
 import { FileExplorerPane } from './FileExplorerPane.tsx'
+import { CodeEditorPane, type EditorExternalOpen } from './CodeEditorPane.tsx'
 import { ChatPane } from './ai/ChatPane.tsx'
-import { analyzePath, useLspForPath } from './lsp/useLsp.ts'
+import type { LspDiagnostic, LspServerState } from './lsp/lsp-manager.ts'
 import { ProblemsPanel } from './lsp/ProblemsPanel.tsx'
 import { GitPane } from './git/GitPane.tsx'
 import { emitGitChanged } from './git/git-bus.ts'
@@ -94,12 +97,15 @@ function TeraxApp() {
   const [rail, setRail] = useState('terminal')
   // Working directory, shared by the explorer and the terminal shell.
   const [cwd, setCwd] = useState(() => process.cwd())
-  // Transient notice shown in the status bar (e.g. "editor lands in M2").
+  // Transient notice shown in the status bar.
   const [notice, setNotice] = useState('')
-  // File under read-only LSP analysis (set by explorer file-open); the M2
-  // editor pane takes over doc ownership once it exists.
-  const [analysisPath, setAnalysisPath] = useState<string | null>(null)
-  const { diags: lspDiags, state: lspState } = useLspForPath(analysisPath)
+  // File opened in the editor (set by explorer file-open); the editor pane
+  // owns this file's LSP doc handle, so its diagnostics supersede any
+  // read-only analysis.
+  const [editorOpen, setEditorOpen] = useState<EditorExternalOpen | null>(null)
+  const [editorNonce, setEditorNonce] = useState(0)
+  const [editorDiags, setEditorDiags] = useState<LspDiagnostic[]>([])
+  const [editorLspState, setEditorLspState] = useState<LspServerState>('off')
   const [paletteOpen, setPaletteOpen] = useState(false)
   paletteToggle.current = setPaletteOpen
 
@@ -119,19 +125,24 @@ function TeraxApp() {
   }
 
   const openInEditor = (path: string) => {
-    // No editor pane yet (M2): hand the file to LSP for read-only analysis
-    // so the problems panel shows real diagnostics in the meantime.
-    const base = path.split('/').pop() ?? path
-    setNotice(`Editor lands in M2 — analyzing ${base} with LSP`)
-    setAnalysisPath(path)
-    void (async () => {
-      try {
-        const text = await readFile(path, 'utf8')
-        await analyzePath(path, text)
-      } catch (err) {
-        setNotice(`LSP analysis failed for ${base}: ${(err as Error).message}`)
-      }
-    })()
+    // Hand the file to the M2 editor pane, which owns its LSP doc handle.
+    const n = editorNonce + 1
+    setEditorNonce(n)
+    setEditorOpen({ path, nonce: n })
+    setRail('editor')
+  }
+
+  /** Jump to a diagnostic from the problems rail (reuses the open editor). */
+  const jumpToProblem = (d: LspDiagnostic) => {
+    const p = editorOpen?.path
+    if (!p) {
+      setNotice('open a file in the editor first')
+      return
+    }
+    const n = editorNonce + 1
+    setEditorNonce(n)
+    setEditorOpen({ path: p, nonce: n, jumpLine: d.range.start.line + 1 })
+    setRail('editor')
   }
 
   /** Run a git action from the palette against the shell's cwd. */
@@ -150,6 +161,7 @@ function TeraxApp() {
     () => [
       { id: 'view-terminal', label: 'View: Terminal', keywords: 'go rail shell', run: () => setRail('terminal') },
       { id: 'view-files', label: 'View: Files', keywords: 'go rail explorer', run: () => setRail('files') },
+      { id: 'view-editor', label: 'View: Editor', keywords: 'go rail code', run: () => setRail('editor') },
       { id: 'view-git', label: 'View: Git', keywords: 'go rail source control', run: () => setRail('git') },
       { id: 'view-ai', label: 'View: AI Chat', keywords: 'go rail', run: () => setRail('ai') },
       { id: 'view-problems', label: 'View: Problems', keywords: 'go rail diagnostics', run: () => setRail('problems') },
@@ -222,6 +234,7 @@ function TeraxApp() {
       >
         <RailButton glyph="▣" label="term" active={rail === 'terminal'} onPress={() => setRail('terminal')} />
         <RailButton glyph="▤" label="files" active={rail === 'files'} onPress={() => setRail('files')} />
+        <RailButton glyph="✎" label="editor" active={rail === 'editor'} onPress={() => setRail('editor')} />
         <RailButton glyph="⑂" label="git" active={rail === 'git'} onPress={() => setRail('git')} />
         <RailButton glyph="✦" label="ai" active={rail === 'ai'} onPress={() => setRail('ai')} />
         <RailButton glyph="⚠" label="problems" active={rail === 'problems'} onPress={() => setRail('problems')} />
@@ -286,17 +299,23 @@ function TeraxApp() {
               <TerminalPane />
             ) : rail === 'files' ? (
               <FileExplorerPane cwd={cwd} onNavigate={navigateDir} onOpenFile={openInEditor} />
+            ) : rail === 'editor' ? (
+              <CodeEditorPane
+                externalOpen={editorOpen ?? undefined}
+                onDiagnostics={(diags, _path, state) => {
+                  setEditorDiags(diags)
+                  setEditorLspState(state)
+                }}
+              />
             ) : rail === 'git' ? (
               <GitPane cwd={cwd} onNotice={setNotice} />
             ) : rail === 'setup' ? (
               <SettingsPane onNotice={setNotice} />
             ) : rail === 'problems' ? (
               <ProblemsPanel
-                diags={lspDiags}
-                path={analysisPath}
-                onJumpLine={(d) =>
-                  setNotice(`Editor lands in M2 — problem at Ln ${d.range.start.line + 1}`)
-                }
+                diags={editorDiags}
+                path={editorOpen?.path ?? null}
+                onJumpLine={jumpToProblem}
               />
             ) : (
               <RailPlaceholder label={rail} />
@@ -323,21 +342,21 @@ function TeraxApp() {
           }}
         >
           <text style={{ fontSize: 11, color: C.secondary }}>⑂ gpuix/main</text>
-          {analysisPath ? (
+          {editorOpen ? (
             <text
               style={{
                 fontSize: 11,
                 color:
-                  lspState === 'running' ? C.green : lspState === 'off' ? C.tertiary : C.amber,
+                  editorLspState === 'running' ? C.green : editorLspState === 'off' ? C.tertiary : C.amber,
               }}
             >
-              LSP {lspState}
-              {lspDiags.length > 0 ? ` · ${lspDiags.length}` : ''}
+              LSP {editorLspState}
+              {editorDiags.length > 0 ? ` · ${editorDiags.length}` : ''}
             </text>
           ) : null}
-          <text style={{ fontSize: 11, color: C.tertiary }}>{notice || 'migration M3+M4+M5 (M2 blocked: no Windows GPUIX-Fork binary)'}</text>
+          <text style={{ fontSize: 11, color: C.tertiary }}>{notice || 'migration M1-M5 (editor on the GPUIX fork)'}</text>
           <div style={{ flexGrow: 1 }} />
-          <text style={{ fontSize: 11, color: C.tertiary }}>GPUIX 0.10.0 · native</text>
+          <text style={{ fontSize: 11, color: C.tertiary }}>GPUIX fork · native</text>
         </div>
       </div>
 
