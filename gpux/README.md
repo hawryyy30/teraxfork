@@ -48,11 +48,15 @@ frontend rebuilt on native GPU rendering via GPUIX (`@gpuix/react`).
   pane via `AssistPanels`). Verified headless: `bun run test` (69 tests) and
   `bun run test:lsp:e2e` against a real `typescript-language-server`.
 - **Remaining (user-side, Windows):** all milestones are done as far as
-  the headless VM goes. Left: download the fork's Windows x64 `.node`
-  artifact (`bindings-x86_64-pc-windows-msvc` from CI run `39267538571`)
-  into the `fork-pkgs` staging (replacing the staged Linux binary), then on
-  Windows: `bun install`, `bun run dev`, and validate terminal rendering,
-  editor keyboard/LSP, and the fork's `selection`/`onSelect` behavior live.
+  the headless VM goes. The fork's Windows x64 `.node` artifact
+  (`bindings-x86_64-pc-windows-msvc` from CI run `39267538571`) was
+  downloaded and extracted by the user on 2026-10-20 into the `fork-pkgs`
+  staging. First Windows runs hit a missing-junction problem (the transfer
+  tar dropped the five `fork-pkgs` node_modules junction links, causing
+  `Cannot find module '@gpuix/native/idle-gc'`); the recreate-junctions +
+  `bun app.tsx` fix was handed over on 2026-10-20 — outcome still pending.
+  Also still pending: real glyph rasterization (blocks instead of glyphs).
+  All of this needs the user's Windows PC and is out of scope here.
 
 Dropped vs stock Terax: the web preview pane (GPUIX has no webview).
 
