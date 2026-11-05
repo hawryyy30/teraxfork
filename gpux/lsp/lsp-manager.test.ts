@@ -259,7 +259,9 @@ describe("crash policy", () => {
     const f = await crashOnce(root);
     expect(manager.sessionStateForPath(f)).toBe("crashed");
     expect(await manager.acquireDoc(f, "x")).toBeNull(); // within 30ms cooldown
-    await sleep(50);
+    // 100ms sleep vs the 30ms cooldown: a 70ms margin, so timer slop under
+    // parallel vitest load cannot leave the acquire inside the cooldown.
+    await sleep(100);
     const h = await manager.acquireDoc(f, "x");
     expect(h).not.toBeNull();
     h!.release();
@@ -268,9 +270,9 @@ describe("crash policy", () => {
   test("three crashes in the window: crashed-out, no more acquires", async () => {
     const root = makeRoot("crash3");
     const f = await crashOnce(root);
-    await sleep(50); // cooldown 1
+    await sleep(100); // cooldown 1 (30ms) + margin
     await crashOnce(root);
-    await sleep(80); // cooldown 2
+    await sleep(120); // cooldown 2 (60ms) + margin
     await crashOnce(root);
     expect(manager.sessionStateForPath(f)).toBe("crashed-out");
     expect(await manager.acquireDoc(f, "x")).toBeNull();
