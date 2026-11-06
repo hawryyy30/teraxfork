@@ -27,9 +27,14 @@ const FAKE_PRESET: LspPreset = {
 
 const TIMINGS = {
   idleShutdownMs: 60,
-  crashWindowMs: 500,
+  // Crash timings are deliberately roomy: the "blocked during cooldown"
+  // acquire runs right after the crash, and under parallel vitest load the
+  // event loop can stall 30ms+ between the crash and that acquire — a
+  // 30ms first cooldown failed ~1 in 3 runs. 300ms gives a 10x margin.
+  // The window must span all three crashes plus their sleeps (~1.1s).
+  crashWindowMs: 5000,
   maxCrashes: 3,
-  crashCooldownsMs: [30, 60, 90],
+  crashCooldownsMs: [300, 600, 900],
   maxSessionsPerPreset: 4,
   evictionMinAgeMs: 20,
   shutdownTimeoutMs: 50,
@@ -258,10 +263,10 @@ describe("crash policy", () => {
     const root = makeRoot("crash1");
     const f = await crashOnce(root);
     expect(manager.sessionStateForPath(f)).toBe("crashed");
-    expect(await manager.acquireDoc(f, "x")).toBeNull(); // within 30ms cooldown
-    // 100ms sleep vs the 30ms cooldown: a 70ms margin, so timer slop under
+    expect(await manager.acquireDoc(f, "x")).toBeNull(); // within 300ms cooldown
+    // 400ms sleep vs the 300ms cooldown: a 100ms margin, so timer slop under
     // parallel vitest load cannot leave the acquire inside the cooldown.
-    await sleep(100);
+    await sleep(400);
     const h = await manager.acquireDoc(f, "x");
     expect(h).not.toBeNull();
     h!.release();
@@ -270,9 +275,9 @@ describe("crash policy", () => {
   test("three crashes in the window: crashed-out, no more acquires", async () => {
     const root = makeRoot("crash3");
     const f = await crashOnce(root);
-    await sleep(100); // cooldown 1 (30ms) + margin
+    await sleep(400); // cooldown 1 (300ms) + margin
     await crashOnce(root);
-    await sleep(120); // cooldown 2 (60ms) + margin
+    await sleep(700); // cooldown 2 (600ms) + margin
     await crashOnce(root);
     expect(manager.sessionStateForPath(f)).toBe("crashed-out");
     expect(await manager.acquireDoc(f, "x")).toBeNull();
