@@ -68,7 +68,10 @@ bun install
 bun run dev
 ```
 
-Typecheck: `bun run typecheck`. Tests: `bun run test`. LSP e2e: `bun run test:lsp:e2e`.
+Typecheck: `bun run typecheck`. Tests: `bun run test` (vitest — do NOT use
+plain `bun test`: the suite uses vitest APIs such as `vi.stubEnv` and
+`expect.any(String)` that Bun's test runner does not match, so `bun test`
+fails 11 tests spuriously). LSP e2e: `bun run test:lsp:e2e`.
 
 ## Fork staging notes
 
